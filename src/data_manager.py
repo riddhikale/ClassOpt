@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import validation as v
+from .database import SQLiteStore
 
 TABLES = {
     "rooms": {
@@ -25,9 +26,34 @@ TABLES = {
 }
 
 
-class DataManager:
+class CSVStore:
+    """Keeps each table in its own CSV file inside data_dir."""
+
     def __init__(self, data_dir="data"):
         self.data_dir = Path(data_dir)
+
+    def read(self, table):
+        cfg = TABLES[table]
+        path = self.data_dir / cfg["file"]
+        if not path.exists():
+            return pd.DataFrame(columns=cfg["cols"])
+        return pd.read_csv(path, dtype=str, keep_default_na=False)
+
+    def write(self, table, df):
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        df.to_csv(self.data_dir / TABLES[table]["file"], index=False)
+
+
+class DataManager:
+    """CRUD + validation on top of a store (CSV files by default, or SQLite)."""
+
+    def __init__(self, data_dir="data", store=None):
+        self.data_dir = Path(data_dir)
+        self.store = store if store is not None else CSVStore(data_dir)
+
+    @classmethod
+    def from_sqlite(cls, db_path="classopt.db"):
+        return cls(store=SQLiteStore(db_path))
 
     # ---------- internal helpers ----------
     def _cfg(self, table):
@@ -35,22 +61,16 @@ class DataManager:
             raise KeyError(f"Unknown table '{table}'. Use one of {list(TABLES)}")
         return TABLES[table]
 
-    def _path(self, table):
-        return self.data_dir / self._cfg(table)["file"]
-
     def _read_raw(self, table):
-        cfg, path = self._cfg(table), self._path(table)
-        if not path.exists():
-            return pd.DataFrame(columns=cfg["cols"])
-        df = pd.read_csv(path, dtype=str, keep_default_na=False)
-        return df.apply(lambda col: col.str.strip())
+        self._cfg(table)
+        df = self.store.read(table)
+        return df if df.empty else df.apply(lambda col: col.str.strip())
 
     def _save(self, table, df):
         errors = self._cfg(table)["validate"](df)
         if errors:
             raise v.ValidationError("; ".join(errors))
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        df.to_csv(self._path(table), index=False)
+        self.store.write(table, df)
 
     # ---------- CRUD ----------
     def get_all(self, table):
