@@ -1,0 +1,6 @@
+class_id,class_name,students,instructor,student_group,fixed_slot
+C101,IT-A,55,Dr. Rao,IT-A,
+C102,IT-B,38,Dr. Rao,IT-B,
+C103,CS-A,75,Dr. Shah,CS-A,
+C104,CS-B,28,Dr. Iyer,CS-B,T1
+C105,EXTC-A,45,Dr. Mehta,EXTC-A,
