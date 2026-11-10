@@ -1,0 +1,13 @@
+room_id,capacity,facilities
+R101,30,Projector
+R102,30,Projector
+R103,30,Projector
+R104,30,
+R105,40,
+R106,50,Projector
+R107,50,Projector
+R108,60,Projector
+R109,80,
+R110,80,Projector
+R111,100,Projector
+R112,120,Projector
