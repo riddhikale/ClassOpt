@@ -1,22 +1,28 @@
 
+def get_conflicts(cls, slot_id, assignments):
+    """Return instructor and student-group conflicts."""
+
+    conflicts = []
+
+    for assigned in assignments:
+
+        if assigned["slot_id"] != slot_id:
+            continue
+
+        if cls["instructor"] == assigned["instructor"]:
+            conflicts.append(
+                f"Instructor {cls['instructor']} is already occupied"
+            )
+
+        if cls["student_group"] == assigned["student_group"]:
+            conflicts.append(
+                f"Student group {cls['student_group']} is already occupied"
+            )
+
+    return conflicts
+
+
 def has_conflict(cls, slot_id, assignments):
-    """
-    Check whether the instructor or student group is already occupied in the given time slot.
-    """
+    """Return True if any scheduling conflict exists."""
 
-    occupied_instructors = {
-        a["instructor"]
-        for a in assignments
-        if a["slot_id"] == slot_id
-    }
-
-    occupied_groups = {
-        a["student_group"]
-        for a in assignments
-        if a["slot_id"] == slot_id
-    }
-
-    return (
-        cls["instructor"] in occupied_instructors
-        or cls["student_group"] in occupied_groups
-    )
+    return bool(get_conflicts(cls, slot_id, assignments))
