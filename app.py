@@ -233,6 +233,40 @@ st.markdown(
             .hero { padding: 24px 22px; }
             .block-container { padding-top: 1rem; }
         }
+        /* Fix input text visibility */
+
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stTextArea"] textarea {
+    color: #172b4d !important;
+    background-color: #ffffff !important;
+}
+
+/* Input placeholder color */
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder {
+    color: #8998ad !important;
+    opacity: 1 !important;
+}
+
+/* Form labels and headings */
+[data-testid="stWidgetLabel"] p {
+    color: #172b4d !important;
+    font-weight: 600 !important;
+}
+
+/* Dropdown selected text */
+[data-testid="stSelectbox"] div[data-baseweb="select"] {
+    color: #172b4d !important;
+    background-color: #ffffff !important;
+}
+
+/* Form headings */
+.stMarkdown h1,
+.stMarkdown h2,
+.stMarkdown h3 {
+    color: #172b4d !important;
+}
     </style>
     """,
     unsafe_allow_html=True,
@@ -362,7 +396,19 @@ try:
 
     with add_room_tab:
         with st.form("add_classroom_form", clear_on_submit=True):
-            st.markdown("**Classroom details**")
+            st.markdown(
+    """
+    <p style="
+        color: #17365f;
+        font-size: 19px;
+        font-weight: 700;
+        margin-bottom: 15px;
+    ">
+        Classroom Details
+    </p>
+    """,
+    unsafe_allow_html=True
+            )
 
             room_id = st.text_input(
                 "Classroom ID",
@@ -495,7 +541,19 @@ try:
             current_room = dm.get("rooms", selected_room)
 
             with st.form("update_room_form"):
-                st.markdown(f"**Editing classroom: {selected_room}**")
+                st.markdown(
+    """
+    <p style="
+        color: #17365f;
+        font-size: 19px;
+        font-weight: 700;
+        margin-bottom: 15px;
+    ">
+        Editing Class
+    </p>
+    """,
+    unsafe_allow_html=True
+)
 
                 new_capacity = st.number_input(
                     "Capacity",
