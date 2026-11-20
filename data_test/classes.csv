@@ -1,0 +1,17 @@
+class_id,class_name,students,instructor,student_group,fixed_slot
+C001,Data Structures,75,Anita,IT Second Year,T1
+C002,Operating Systems,110,Rahul,CS Third Year,T1
+C003,Java Programming,45,Priya,IT Third Year,T1
+C004,Database Systems,28,Kiran,IT Second Year Lab,T1
+C005,Computer Networks,60,Meera,CS Second Year,T1
+C006,Python Basics,25,Priya,IT First Year,
+C007,Discrete Maths,100,Suresh,CS First Year,
+C008,Web Technologies,48,Anita,IT Third Year Lab,
+C009,Machine Learning,90,Neha,CS Fourth Year,T4
+C010,Software Engineering,55,Rahul,CS Third Year Lab,
+C011,Cloud Computing,35,Kiran,IT Fourth Year,
+C012,Cyber Security,70,Meera,CS Fourth Year Lab,
+C013,Guest Lecture,150,Dean,All Years,
+C014,Compiler Design,40,Suresh,CS Third Year Elective,T2
+C015,Professional Ethics,120,Neha,CS First Year Lab,
+C016,Data Mining,30,Kiran,IT Fourth Year Lab,

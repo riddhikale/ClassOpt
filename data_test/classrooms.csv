@@ -1,0 +1,5 @@
+room_id,capacity,facilities
+R101,30,Whiteboard
+R102,50,Projector
+R103,80,"Projector, Smart board"
+R104,120,"Projector, Smart board, Mic system"
