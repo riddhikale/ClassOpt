@@ -1,288 +1,232 @@
+import html
+from pathlib import Path
 
-import streamlit as st
 import pandas as pd
 import plotly.express as px
+import streamlit as st
 
 from src.data_manager import DataManager
 from src.allocation import allocate_classes
 from src.validation import ValidationError
 
 
-# ---------------------------------------------------------
-# Page configuration
-# ---------------------------------------------------------
 st.set_page_config(
-    page_title="ClassOpt | Smart Classroom Planner",
+    page_title="ClassOpt | Classroom Planner",
     page_icon="🏫",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
+PAGES = ["Dashboard", "Allocation", "Records"]
+ACCENT = "#0F766E"
+INK = "#0F172A"
 
-# ---------------------------------------------------------
-# Custom UI theme
-# ---------------------------------------------------------
+
+def find_datasets():
+    """List every folder next to app.py that holds a classrooms.csv, 'data' first."""
+    root = Path(__file__).parent
+    found = sorted(
+        p.name for p in root.iterdir() if p.is_dir() and (p / "classrooms.csv").exists()
+    )
+    if "data" in found:
+        found.remove("data")
+        found.insert(0, "data")
+    return found or ["data", "data_large", "data_stress", "data_test"]
+
+
+DATASETS = find_datasets()
+
+LOGO_SVG = """
+<svg width="46" height="46" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <rect width="44" height="44" rx="11" fill="#0F766E" stroke="rgba(255,255,255,0.25)"/>
+  <rect x="9" y="9" width="11" height="11" rx="3" fill="#FFFFFF"/>
+  <rect x="24" y="9" width="11" height="11" rx="3" fill="#FFFFFF" opacity="0.55"/>
+  <rect x="9" y="24" width="11" height="11" rx="3" fill="#FFFFFF" opacity="0.55"/>
+  <rect x="24" y="24" width="11" height="11" rx="3" fill="#F59E0B"/>
+</svg>
+"""
+
+LOGO_SVG = "".join(line.strip() for line in LOGO_SVG.splitlines())
+
+
 st.markdown(
     """
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap');
 
-        html, body, [class*="css"] {
-            font-family: 'DM Sans', sans-serif;
-        }
+    :root {
+        color-scheme: light;
+        --navy: #0B2545;
+        --ink: #0F172A;
+        --muted: #556275;
+        --line: #DCE3EC;
+        --bg: #F2F5F9;
+        --surface: #FFFFFF;
+        --accent: #0F766E;
+        --accent-dark: #0B5F58;
+        --accent-soft: #E0F2F0;
+        --amber: #F59E0B;
+        --warn: #B45309;
+    }
 
-        .stApp {
-            background: linear-gradient(180deg, #f5f8ff 0%, #f8fafc 42%, #f8fafc 100%);
-        }
+    html, body, [class*="css"], .stApp {
+        font-family: 'Instrument Sans', system-ui, sans-serif;
+        color: var(--ink);
+    }
+    .stApp { background: var(--bg); }
+    [data-testid="stHeader"] { background: transparent; }
+    .block-container { max-width: 1280px; padding-top: 1.6rem; padding-bottom: 3rem; }
 
-        [data-testid="stHeader"] {
-            background: rgba(245, 248, 255, 0.85);
-        }
+    /* No sidebar: everything lives on the page */
+    [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"] { display: none !important; }
 
-        .block-container {
-            max-width: 1440px;
-            padding-top: 1.8rem;
-            padding-bottom: 3rem;
-        }
+    /* Top bar */
+    .topbar {
+        display: flex; align-items: center; gap: 14px;
+        background: var(--navy); border-radius: 14px; padding: 14px 22px;
+    }
+    .tb-name { color: #FFFFFF; font-size: 24px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.1; }
+    .tb-tag { color: #B9C7DB; font-size: 13px; margin-top: 3px; }
 
-        [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #101d38 0%, #172b50 100%);
-        }
+    /* Navigation (pill buttons) */
+    div[role="radiogroup"] { gap: 8px; }
+    div[role="radiogroup"] > label {
+        background: var(--surface); border: 1px solid var(--line);
+        border-radius: 10px; padding: 8px 20px; margin: 0; cursor: pointer;
+    }
+    div[role="radiogroup"] > label > div:first-child { display: none; }
+    div[role="radiogroup"] > label p { font-weight: 600; }
+    div[role="radiogroup"] > label:has(input:checked) {
+        background: var(--accent); border-color: var(--accent);
+    }
+    div[role="radiogroup"] > label:has(input:checked) p { color: #FFFFFF !important; }
 
-        [data-testid="stSidebar"] * {
-            color: #edf3ff;
-        }
+    /* Section headings */
+    .page-head { margin: 22px 0 14px 0; }
+    .page-title { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; margin: 0; }
+    .page-sub { color: var(--muted); font-size: 14px; margin-top: 3px; max-width: 700px; }
+    .block-title { font-size: 16px; font-weight: 650; margin: 24px 0 3px 0; }
+    .block-sub { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
 
-        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
-            color: #c7d5ee;
-        }
+    /* Metrics */
+    div[data-testid="stMetric"] {
+        background: var(--surface); border: 1px solid var(--line);
+        border-left: 4px solid var(--accent);
+        border-radius: 12px; padding: 14px 18px;
+    }
+    [data-testid="stMetricLabel"] p { color: var(--muted) !important; font-size: 13px !important; }
+    [data-testid="stMetricValue"] { font-weight: 700 !important; letter-spacing: -0.5px; }
 
-        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
-            color: #e5edff;
-            font-weight: 600;
-        }
+    /* Buttons, forms, tables */
+    .stButton > button, .stFormSubmitButton > button, .stDownloadButton > button {
+        border-radius: 8px; font-weight: 600; min-height: 42px;
+    }
+    .stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] {
+        background: var(--accent); border-color: var(--accent);
+    }
+    .stButton > button[kind="primary"]:hover, .stFormSubmitButton > button[kind="primary"]:hover {
+        background: var(--accent-dark); border-color: var(--accent-dark);
+    }
+    div[data-testid="stForm"] { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+    div[data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    div[data-testid="stAlert"] { border-radius: 10px; }
 
-        .brand-mark {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 2px 24px 2px;
-        }
+    /* Panels and checklist */
+    .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 6px 18px; }
+    .check { display: flex; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--ink); }
+    .check:last-child { border-bottom: 0; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex: none; }
+    .dot.ok { background: var(--accent); }
+    .dot.warn { background: var(--amber); }
+    .empty-state {
+        background: var(--surface); border: 1px dashed #B8C4D4; border-radius: 12px;
+        padding: 26px; text-align: center; color: var(--muted); font-size: 14px;
+    }
 
-        .brand-icon {
-            width: 42px;
-            height: 42px;
-            border-radius: 13px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #60a5fa, #2563eb);
-            font-size: 23px;
-            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.28);
-        }
+    /* Timetable */
+    .tt-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+    table.tt { border-collapse: collapse; width: 100%; font-size: 13px; }
+    table.tt th {
+        text-align: left; padding: 10px 12px; font-weight: 600; color: var(--muted);
+        background: #F6F8FB; border-bottom: 1px solid var(--line); white-space: nowrap;
+    }
+    table.tt td { padding: 6px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); vertical-align: top; min-width: 130px; }
+    table.tt tr:last-child td, table.tt tr:last-child th { border-bottom: 0; }
+    table.tt td:last-child { border-right: 0; }
+    table.tt th.room { background: #F6F8FB; color: var(--ink); border-right: 1px solid var(--line); }
+    table.tt th.room small { display: block; font-weight: 500; color: var(--muted); }
+    .cell { border-radius: 7px; padding: 7px 9px; color: var(--ink); }
+    .cell b { display: block; font-weight: 650; line-height: 1.25; }
+    .cell span { font-size: 11.5px; color: #12302E; }
+    .empty { color: #A5B1C2; padding: 7px 9px; }
+    .legend { font-size: 12px; color: var(--muted); margin-top: 8px; }
 
-        .brand-name {
-            color: white;
-            font-size: 21px;
-            line-height: 1.1;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-        }
+    /* ---- Readability: dark text on light surfaces whatever the browser theme ---- */
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] li,
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stWidgetLabel"] label,
+    [data-testid="stCheckbox"] label,
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] summary p,
+    [data-testid="stAlert"] p,
+    [data-testid="stToast"] p { color: var(--ink) !important; }
+    [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p { color: var(--muted) !important; }
 
-        .brand-caption {
-            color: #a9bddc;
-            font-size: 10px;
-            margin-top: 4px;
-            letter-spacing: 1.2px;
-            text-transform: uppercase;
-        }
+    input, textarea, [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input {
+        color: var(--ink) !important; -webkit-text-fill-color: var(--ink) !important; background: #FFFFFF !important;
+    }
+    input::placeholder, textarea::placeholder {
+        color: #8793A5 !important; -webkit-text-fill-color: #8793A5 !important; opacity: 1 !important;
+    }
+    [data-baseweb="input"], [data-baseweb="base-input"], [data-baseweb="select"] > div {
+        background: #FFFFFF !important; border-color: var(--line) !important;
+    }
+    [data-baseweb="select"] *, [data-testid="stNumberInput"] button { color: var(--ink) !important; fill: var(--ink) !important; }
+    [data-testid="stNumberInput"] button { background: #F2F5F9 !important; }
+    [data-baseweb="popover"] ul, [data-baseweb="popover"] li, [data-baseweb="menu"],
+    [role="listbox"], [role="option"] { background: #FFFFFF !important; color: var(--ink) !important; }
+    [role="option"]:hover, [role="option"][aria-selected="true"] { background: var(--accent-soft) !important; }
 
-        .hero {
-            position: relative;
-            overflow: hidden;
-            padding: 30px 34px;
-            border-radius: 22px;
-            background: linear-gradient(115deg, #112344 0%, #1e4785 62%, #2563c7 100%);
-            color: white;
-            box-shadow: 0 15px 35px rgba(24, 62, 119, 0.16);
-            margin-bottom: 26px;
-        }
+    [data-testid="stTabs"] button p { color: var(--muted) !important; font-weight: 600; }
+    [data-testid="stTabs"] button[aria-selected="true"] p { color: var(--accent) !important; }
+    [data-testid="stExpander"] details { background: #FFFFFF; border-color: var(--line); border-radius: 10px; }
 
-        .hero:after {
-            content: "";
-            position: absolute;
-            width: 260px;
-            height: 260px;
-            right: -65px;
-            top: -125px;
-            border: 1px solid rgba(255,255,255,0.16);
-            border-radius: 50%;
-            box-shadow: 0 0 0 28px rgba(255,255,255,0.035), 0 0 0 58px rgba(255,255,255,0.025);
-        }
+    .stButton > button[kind="secondary"], .stDownloadButton > button { background: #FFFFFF; border: 1px solid var(--line); }
+    .stButton > button[kind="secondary"] *, .stDownloadButton > button * { color: var(--ink) !important; }
+    .stButton > button[kind="primary"] *, .stFormSubmitButton > button[kind="primary"] * { color: #FFFFFF !important; }
+    .stButton > button:disabled { opacity: 0.5; }
 
-        .hero-kicker {
-            color: #bfdbfe;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 1.8px;
-            text-transform: uppercase;
-            margin-bottom: 9px;
-        }
-
-        .hero-title {
-            color: white;
-            font-size: clamp(29px, 4vw, 40px);
-            font-weight: 800;
-            letter-spacing: -1.2px;
-            line-height: 1.12;
-            margin: 0;
-        }
-
-        .hero-subtitle {
-            color: #d8e7ff;
-            font-size: 14px;
-            margin-top: 10px;
-            max-width: 650px;
-        }
-
-        .section-heading {
-            margin: 28px 0 14px 0;
-        }
-
-        .section-title {
-            color: #14233f;
-            font-size: 21px;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-        }
-
-        .section-caption {
-            color: #71819b;
-            font-size: 12px;
-            margin-top: 3px;
-        }
-
-        div[data-testid="stMetric"] {
-            background: #ffffff;
-            border: 1px solid #e6edf7;
-            border-radius: 17px;
-            padding: 18px 20px;
-            box-shadow: 0 5px 18px rgba(18, 42, 82, 0.045);
-        }
-
-        [data-testid="stMetricLabel"] p {
-            color: #71819b !important;
-            font-size: 12px !important;
-            font-weight: 600 !important;
-        }
-
-        [data-testid="stMetricValue"] {
-            color: #14233f !important;
-            font-weight: 800 !important;
-        }
-
-        [data-testid="stTabs"] button {
-            font-weight: 650;
-        }
-
-        [data-testid="stTabs"] button[aria-selected="true"] {
-            color: #1d4ed8;
-        }
-
-        div[data-testid="stDataFrame"] {
-            border: 1px solid #e6edf7;
-            border-radius: 13px;
-            overflow: hidden;
-        }
-
-        .stButton > button,
-        .stFormSubmitButton > button {
-            border-radius: 10px;
-            min-height: 42px;
-            font-weight: 700;
-            transition: all 0.15s ease;
-        }
-
-        .stButton > button[kind="primary"],
-        .stFormSubmitButton > button[kind="primary"] {
-            background: linear-gradient(100deg, #1d4ed8, #2563eb);
-            border: 0;
-            color: white;
-            box-shadow: 0 5px 14px rgba(37, 99, 235, 0.18);
-        }
-
-        div[data-testid="stForm"] {
-            background: #ffffff;
-            border: 1px solid #e6edf7;
-            border-radius: 15px;
-            padding: 18px 20px 12px 20px;
-        }
-
-        div[data-testid="stAlert"] {
-            border-radius: 12px;
-        }
-
-        .small-note {
-            color: #71819b;
-            font-size: 11px;
-            text-align: center;
-            padding-top: 24px;
-        }
-
-        @media (max-width: 700px) {
-            .hero { padding: 24px 22px; }
-            .block-container { padding-top: 1rem; }
-        }
-        /* Fix input text visibility */
-
-[data-testid="stTextInput"] input,
-[data-testid="stNumberInput"] input,
-[data-testid="stTextArea"] textarea {
-    color: #172b4d !important;
-    background-color: #ffffff !important;
-}
-
-/* Input placeholder color */
-[data-testid="stTextInput"] input::placeholder,
-[data-testid="stTextArea"] textarea::placeholder {
-    color: #8998ad !important;
-    opacity: 1 !important;
-}
-
-/* Form labels and headings */
-[data-testid="stWidgetLabel"] p {
-    color: #172b4d !important;
-    font-weight: 600 !important;
-}
-
-/* Dropdown selected text */
-[data-testid="stSelectbox"] div[data-baseweb="select"] {
-    color: #172b4d !important;
-    background-color: #ffffff !important;
-}
-
-/* Form headings */
-.stMarkdown h1,
-.stMarkdown h2,
-.stMarkdown h3 {
-    color: #172b4d !important;
-}
+    @media (max-width: 700px) {
+        .tb-name { font-size: 20px; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
-# ---------------------------------------------------------
-# Reusable display helpers
-# ---------------------------------------------------------
-def section_heading(title, caption=""):
+def page_header(title, subtitle, chip=None):
     st.markdown(
         f"""
-        <div class="section-heading">
-            <div class="section-title">{title}</div>
-            <div class="section-caption">{caption}</div>
+        <div class="page-head">
+            <h1 class="page-title">{html.escape(title)}</h1>
+            <div class="page-sub">{html.escape(subtitle)}</div>
         </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def block(title, subtitle=""):
+    st.markdown(
+        f"""
+        <div class="block-title">{html.escape(title)}</div>
+        <div class="block-sub">{html.escape(subtitle)}</div>
         """,
         unsafe_allow_html=True,
     )
@@ -292,212 +236,395 @@ def clear_allocation_result():
     st.session_state["allocation_result"] = None
 
 
-# ---------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------
-with st.sidebar:
-    st.markdown(
-        """
-        <div class="brand-mark">
-            <div class="brand-icon">🏫</div>
-            <div>
-                <div class="brand-name">ClassOpt</div>
-                <div class="brand-caption">Smart Space Planner</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+def go_to(page):
+    st.session_state["page"] = page
+
+
+def run_action(action, success_message):
+    """Run a data change, reset any stale allocation, and refresh the page."""
+    try:
+        action()
+        clear_allocation_result()
+        st.toast(success_message, icon="✅")
+        st.rerun()
+    except (ValidationError, KeyError) as e:
+        st.error(str(e))
+
+
+def search_filter(df, label, key):
+    query = st.text_input(label, key=key, placeholder="Search…", label_visibility="collapsed")
+    if query:
+        mask = df.astype(str).apply(
+            lambda col: col.str.contains(query, case=False, na=False)
+        ).any(axis=1)
+        return df[mask]
+    return df
+
+
+def style_chart(fig, height):
+    fig.update_layout(
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        font=dict(family="Instrument Sans, sans-serif", color=INK),
+        margin=dict(l=10, r=10, t=20, b=10),
+        height=height,
+        showlegend=False,
+    )
+    fig.update_xaxes(gridcolor="#E8EDF3")
+    fig.update_yaxes(gridcolor="#E8EDF3")
+    return fig
+
+
+def readiness_checks(rooms, classes, slots):
+    seats = pd.to_numeric(rooms["capacity"], errors="coerce")
+    sizes = pd.to_numeric(classes["students"], errors="coerce")
+    checks = []
+
+    too_big = classes[sizes > seats.max()] if len(seats.dropna()) else classes.iloc[0:0]
+    if len(too_big):
+        names = ", ".join(too_big["class_id"].astype(str).head(4))
+        more = "…" if len(too_big) > 4 else ""
+        checks.append(("warn", f"{len(too_big)} class(es) are larger than every room ({names}{more})."))
+    else:
+        checks.append(("ok", "Every class fits in at least one room."))
+
+    fixed = classes["fixed_slot"].astype(str).str.strip()
+    fixed = fixed[fixed != ""]
+    crowded = fixed.value_counts()
+    crowded = crowded[crowded > len(rooms)]
+    if len(crowded):
+        checks.append(("warn", f"More classes are fixed to {', '.join(crowded.index.astype(str)[:4])} than there are rooms."))
+    else:
+        checks.append(("ok", f"{len(fixed)} class(es) have a fixed slot, and none overload a slot."))
+
+    combos = len(rooms) * len(slots)
+    if len(classes) > combos:
+        checks.append(("warn", "There are more classes than room and slot combinations."))
+    else:
+        checks.append(("ok", f"{combos} room and slot combinations for {len(classes)} classes."))
+    return checks
+
+
+def summarize_result(result, total_classes):
+    assignments = pd.DataFrame(result["assignments"])
+    unallocated = pd.DataFrame(result["unallocated"])
+    placed = len(assignments)
+    rate = placed / total_classes * 100 if total_classes else 0
+    avg_use = 0
+    if not assignments.empty:
+        students = pd.to_numeric(assignments["students"], errors="coerce").sum()
+        capacity = pd.to_numeric(assignments["capacity"], errors="coerce").sum()
+        avg_use = students / capacity * 100 if capacity else 0
+    return assignments, unallocated, placed, rate, avg_use
+
+
+def allocation_metrics(placed, total, unplaced, rate, avg_use):
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Classes placed", f"{placed} of {total}")
+    m2.metric("Not placed", unplaced)
+    m3.metric("Placement rate", f"{rate:.0f}%")
+    m4.metric("Average seat use", f"{avg_use:.0f}%")
+
+
+def usage_chart(assignments):
+    usage = (
+        assignments.assign(
+            students=pd.to_numeric(assignments["students"], errors="coerce"),
+            capacity=pd.to_numeric(assignments["capacity"], errors="coerce"),
+        )
+        .groupby("room_id")
+        .agg(students=("students", "sum"), capacity=("capacity", "sum"))
+        .reset_index()
+    )
+    usage["utilization"] = usage["students"] / usage["capacity"] * 100
+    usage = usage.sort_values("utilization")
+    fig = px.bar(
+        usage,
+        x="utilization",
+        y="room_id",
+        orientation="h",
+        text=usage["utilization"].round(0).astype(int).astype(str) + "%",
+        labels={"room_id": "Classroom", "utilization": "Seats filled (%)"},
+    )
+    fig.update_traces(marker_color=ACCENT, textposition="outside", marker_line_width=0)
+    fig.update_xaxes(range=[0, 112], ticksuffix="%")
+    return style_chart(fig, max(260, 32 * len(usage) + 70))
+
+
+def timetable_html(assignments, rooms, slots, compact=True):
+    """Rooms down the side, time slots across the top, one card per class."""
+    if assignments.empty or not {"room_id", "slot_id"}.issubset(assignments.columns):
+        return None
+
+    label_col = next((c for c in ("class_name", "class_id") if c in assignments.columns), None)
+    lookup = {(r["room_id"], r["slot_id"]): r for _, r in assignments.iterrows()}
+    room_cap = dict(zip(rooms["room_id"], pd.to_numeric(rooms["capacity"], errors="coerce")))
+
+    slot_ids = slots["slot_id"].tolist()
+    room_ids = rooms["room_id"].tolist()
+    if compact:
+        used_slots = set(assignments["slot_id"])
+        used_rooms = set(assignments["room_id"])
+        slot_ids = [s for s in slot_ids if s in used_slots]
+        room_ids = [r for r in room_ids if r in used_rooms]
+
+    head = "".join(f"<th>{html.escape(str(s))}</th>" for s in slot_ids)
+    rows = []
+    for room_id in room_ids:
+        cap = room_cap.get(room_id)
+        cap_txt = f"{int(cap)} seats" if pd.notna(cap) else ""
+        cells = []
+        for slot_id in slot_ids:
+            row = lookup.get((room_id, slot_id))
+            if row is None:
+                cells.append('<td><div class="empty">Free</div></td>')
+                continue
+            students = pd.to_numeric(row.get("students"), errors="coerce")
+            capacity = pd.to_numeric(row.get("capacity"), errors="coerce")
+            use = (students / capacity) if capacity and pd.notna(capacity) else 0
+            alpha = 0.14 + 0.5 * min(max(use, 0), 1)
+            name = html.escape(str(row[label_col])) if label_col else "Class"
+            detail = (
+                f"{int(students)} of {int(capacity)} seats"
+                if pd.notna(students) and pd.notna(capacity)
+                else ""
+            )
+            cells.append(
+                f'<td><div class="cell" style="background: rgba(15,118,110,{alpha:.2f})">'
+                f"<b>{name}</b><span>{detail}</span></div></td>"
+            )
+        rows.append(
+            f'<tr><th class="room">{html.escape(str(room_id))}<small>{cap_txt}</small></th>'
+            f'{"".join(cells)}</tr>'
+        )
+
+    return (
+        '<div class="tt-wrap"><table class="tt">'
+        f'<thead><tr><th class="room">Room</th>{head}</tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody></table></div>'
+        '<div class="legend">Darker cells mean fuller rooms.</div>'
     )
 
-    st.markdown("### Workspace")
+
+st.session_state.setdefault("page", "Dashboard")
+
+brand_col, dataset_col = st.columns([4, 1.2], vertical_alignment="bottom", gap="medium")
+
+with brand_col:
+    topbar = (
+        '<div class="topbar">'
+        + LOGO_SVG
+        + "<div>"
+        + '<div class="tb-name">ClassOpt</div>'
+        + '<div class="tb-tag">Classroom occupancy and space allocation</div>'
+        + "</div></div>"
+    )
+    st.markdown(topbar, unsafe_allow_html=True)
+
+with dataset_col:
     dataset = st.selectbox(
-        "Select dataset",
-        ["data", "data_large", "data_stress"],
-        help="Choose the classroom dataset to manage and optimize.",
+        "Dataset",
+        DATASETS,
+        help="Choose which set of classrooms, classes and slots to work with.",
     )
 
-    st.markdown("---")
-    st.markdown("**What you can do**")
-    st.markdown("- View classroom, class and slot data")
-    st.markdown("- Add, update and delete records")
-    st.markdown("- Generate classroom allocations")
-    st.markdown("- Review utilization and unallocated classes")
-
-    st.markdown("---")
-    st.caption("ClassOpt • Classroom Allocation System")
-
-
-# Reset old results when dataset changes
 if st.session_state.get("selected_dataset") != dataset:
     st.session_state["selected_dataset"] = dataset
     st.session_state["allocation_result"] = None
 
+st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+st.radio("Navigate", PAGES, key="page", horizontal=True, label_visibility="collapsed")
 
-# ---------------------------------------------------------
-# Load and validate data
-# ---------------------------------------------------------
-try:
-    dm = DataManager(dataset)
-    data = dm.get_clean_data()
 
-    rooms = data["rooms"]
-    classes = data["classes"]
-    slots = data["slots"]
+def dashboard_page(rooms, classes, slots):
+    seats = pd.to_numeric(rooms["capacity"], errors="coerce")
+    sizes = pd.to_numeric(classes["students"], errors="coerce")
 
-    # Hero banner
-    st.markdown(
-        """
-        <div class="hero">
-            <div class="hero-kicker">Classroom Occupancy & Space Allocation</div>
-            <div class="hero-title">Plan smarter. Use space better.</div>
-            <div class="hero-subtitle">
-                Manage your academic spaces, organize class schedules and generate
-                efficient classroom allocations from one dashboard.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Classrooms", len(rooms))
+    m2.metric("Classes", len(classes))
+    m3.metric("Time slots", len(slots))
+    m4.metric("Total seats", int(seats.sum()) if len(seats) else 0)
+
+    left, right = st.columns([3, 2], gap="large")
+
+    with left:
+        block("Class sizes", "How many students each class has, compared with your biggest room")
+        if len(sizes.dropna()):
+            fig = px.histogram(sizes.dropna(), nbins=12, labels={"value": "Students per class"})
+            fig.update_traces(marker_color=ACCENT, marker_line_width=0)
+            if len(seats.dropna()):
+                fig.add_vline(
+                    x=seats.max(),
+                    line_dash="dash",
+                    line_color="#B45309",
+                    annotation_text=f"Largest room: {int(seats.max())}",
+                    annotation_position="top left",
+                )
+            fig.update_layout(yaxis_title="Classes")
+            st.plotly_chart(style_chart(fig, 300), width="stretch")
+        else:
+            st.markdown('<div class="empty-state">Add classes to see how their sizes compare with your rooms.</div>', unsafe_allow_html=True)
+
+    with right:
+        block("Readiness checks", "Things that may stop a class from getting a room")
+        items = "".join(
+            f'<div class="check"><span class="dot {kind}"></span><span>{html.escape(text)}</span></div>'
+            for kind, text in readiness_checks(rooms, classes, slots)
+        )
+        st.markdown(f'<div class="panel">{items}</div>', unsafe_allow_html=True)
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+        st.button(
+            "Go to allocation",
+            type="primary",
+            width="stretch",
+            on_click=go_to,
+            args=("Allocation",),
+        )
+
+    block("Latest allocation", "Results from the most recent run on this dataset")
+    result = st.session_state.get("allocation_result")
+    if result is None:
+        st.markdown(
+            '<div class="empty-state">No allocation yet. Open <b>Allocation</b> and select '
+            "<b>Run allocation</b>. Editing any record clears the previous result.</div>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    assignments, unallocated, placed, rate, avg_use = summarize_result(result, len(classes))
+    allocation_metrics(placed, len(classes), len(unallocated), rate, avg_use)
+
+    a, b = st.columns([3, 2], gap="large")
+    with a:
+        block("Seats filled by room", "Share of seats filled across all sessions in each room")
+        if assignments.empty:
+            st.info("No classes were placed.")
+        else:
+            st.plotly_chart(usage_chart(assignments), width="stretch")
+    with b:
+        block("Classes not placed", "These need a bigger room or a different slot")
+        if unallocated.empty:
+            st.success("Every class has a room and a time slot.")
+        else:
+            st.dataframe(unallocated, width="stretch", hide_index=True)
+
+
+def records_page(dm, rooms, classes, slots):
+    page_header(
+        "Records",
+        "Browse, add, edit and delete classrooms and classes.",
     )
 
-    # Overview metrics
-    section_heading("Dashboard overview", "A quick snapshot of your selected dataset")
-    metric1, metric2, metric3 = st.columns(3)
-
-    metric1.metric("Total classrooms", len(rooms))
-    metric2.metric("Total classes", len(classes))
-    metric3.metric("Available time slots", len(slots))
-
-    # Project data
-    section_heading("Project data", "Explore the records currently stored in this dataset")
-    data_tab1, data_tab2, data_tab3 = st.tabs(
-        ["🏫 Classrooms", "📚 Classes", "🕒 Time slots"]
+    kind = st.radio(
+        "Record type",
+        ["Classrooms", "Classes"],
+        horizontal=True,
+        label_visibility="collapsed",
     )
 
-    with data_tab1:
-        st.dataframe(rooms, width="stretch", hide_index=True)
+    if kind == "Classrooms":
+        rooms_records(dm, rooms)
+    else:
+        classes_records(dm, classes, slots)
 
-    with data_tab2:
-        st.dataframe(classes, width="stretch", hide_index=True)
-
-    with data_tab3:
+    with st.expander("View time slots"):
         st.dataframe(slots, width="stretch", hide_index=True)
 
-    # -----------------------------------------------------
-    # Add records
-    # -----------------------------------------------------
-    section_heading(
-        "Add new records",
-        "Create classrooms and classes in the selected dataset"
-    )
 
-    add_room_tab, add_class_tab = st.tabs(
-        ["➕ Add classroom", "➕ Add class"]
-    )
+def rooms_records(dm, rooms):
+    shown = search_filter(rooms, "Search classrooms", "search_rooms")
+    st.caption(f"Showing {len(shown)} of {len(rooms)} classrooms")
+    st.dataframe(shown, width="stretch", hide_index=True)
 
-    with add_room_tab:
+    add_tab, edit_tab, delete_tab = st.tabs(["Add classroom", "Edit classroom", "Delete classroom"])
+
+    with add_tab:
         with st.form("add_classroom_form", clear_on_submit=True):
-            st.markdown(
-    """
-    <p style="
-        color: #17365f;
-        font-size: 19px;
-        font-weight: 700;
-        margin-bottom: 15px;
-    ">
-        Classroom Details
-    </p>
-    """,
-    unsafe_allow_html=True
-            )
+            c1, c2 = st.columns(2)
+            room_id = c1.text_input("Classroom ID", placeholder="R107")
+            capacity = c2.number_input("Capacity (seats)", min_value=1, step=1, value=40)
+            facilities = st.text_input("Facilities", placeholder="Projector, smart board")
 
-            room_id = st.text_input(
-                "Classroom ID",
-                placeholder="Example: R107"
-            )
-
-            capacity = st.number_input(
-                "Classroom capacity",
-                min_value=1,
-                step=1,
-                value=40
-            )
-
-            facilities = st.text_input(
-                "Facilities",
-                placeholder="Example: Projector, Smart board",
-            )
-
-            submitted_room = st.form_submit_button(
-                "Add classroom",
-                type="primary",
-                width="stretch"
-            )
-
-            if submitted_room:
-                try:
-                    dm.add(
+            if st.form_submit_button("Add classroom", type="primary", width="stretch"):
+                run_action(
+                    lambda: dm.add(
                         "rooms",
-                        {
-                            "room_id": room_id,
-                            "capacity": str(capacity),
-                            "facilities": facilities,
-                        },
+                        {"room_id": room_id, "capacity": str(capacity), "facilities": facilities},
+                    ),
+                    "Classroom added",
+                )
+
+    room_ids = rooms["room_id"].tolist()
+
+    with edit_tab:
+        if not room_ids:
+            st.info("There are no classrooms yet. Add one in the first tab.")
+        else:
+            selected = st.selectbox("Classroom", room_ids, key="edit_room_select")
+            current = dm.get("rooms", selected)
+            with st.form("update_room_form"):
+                c1, c2 = st.columns(2)
+                new_capacity = c1.number_input(
+                    "Capacity (seats)",
+                    min_value=1,
+                    value=int(current["capacity"]),
+                    key=f"room_cap_{selected}",
+                )
+                new_facilities = c2.text_input(
+                    "Facilities",
+                    value=current["facilities"],
+                    key=f"room_fac_{selected}",
+                )
+                if st.form_submit_button("Save changes", type="primary", width="stretch"):
+                    run_action(
+                        lambda: dm.update(
+                            "rooms",
+                            selected,
+                            {"capacity": str(new_capacity), "facilities": new_facilities},
+                        ),
+                        "Changes saved",
                     )
 
-                    clear_allocation_result()
-                    st.success("Classroom added successfully!")
-                    st.rerun()
+    with delete_tab:
+        if not room_ids:
+            st.info("There are no classrooms to delete.")
+        else:
+            selected = st.selectbox("Classroom", room_ids, key="delete_room_select")
+            st.warning(f"Deleting {selected} removes it from this dataset for good.")
+            confirm = st.checkbox(f"Yes, delete {selected}", key="confirm_room_delete")
+            if st.button("Delete classroom", disabled=not confirm, key="delete_room_button"):
+                run_action(lambda: dm.delete("rooms", selected), "Classroom deleted")
 
-                except (ValidationError, KeyError) as e:
-                    st.error(str(e))
 
-    with add_class_tab:
+def classes_records(dm, classes, slots):
+    shown = search_filter(classes, "Search classes", "search_classes")
+    st.caption(f"Showing {len(shown)} of {len(classes)} classes")
+    st.dataframe(shown, width="stretch", hide_index=True)
+
+    add_tab, edit_tab, delete_tab = st.tabs(["Add class", "Edit class", "Delete class"])
+    slot_options = [""] + slots["slot_id"].tolist()
+
+    with add_tab:
         with st.form("add_class_form", clear_on_submit=True):
-            st.markdown("**Class details**")
-
-            class_id = st.text_input(
-                "Class ID",
-                placeholder="Example: C108"
+            c1, c2 = st.columns(2)
+            class_id = c1.text_input("Class ID", placeholder="C108")
+            class_name = c2.text_input("Class name", placeholder="Java Programming")
+            c3, c4 = st.columns(2)
+            students = c3.number_input("Students", min_value=1, step=1, value=30)
+            instructor = c4.text_input("Instructor", placeholder="Priya")
+            c5, c6 = st.columns(2)
+            student_group = c5.text_input("Student group", placeholder="IT Third Year")
+            fixed_slot = c6.selectbox(
+                "Fixed time slot",
+                slot_options,
+                help="Leave empty to let ClassOpt choose the slot.",
             )
 
-            class_name = st.text_input(
-                "Class name",
-                placeholder="Example: Java Programming"
-            )
-
-            students = st.number_input(
-                "Number of students",
-                min_value=1,
-                step=1,
-                value=30
-            )
-
-            instructor = st.text_input(
-                "Instructor name",
-                placeholder="Example: Priya"
-            )
-
-            student_group = st.text_input(
-                "Student group",
-                placeholder="Example: IT Third Year"
-            )
-
-            slot_options = [""] + slots["slot_id"].tolist()
-
-            fixed_slot = st.selectbox(
-                "Fixed time slot (optional)",
-                slot_options
-            )
-
-            submitted_class = st.form_submit_button(
-                "Add class",
-                type="primary",
-                width="stretch"
-            )
-
-            if submitted_class:
-                try:
-                    dm.add(
+            if st.form_submit_button("Add class", type="primary", width="stretch"):
+                run_action(
+                    lambda: dm.add(
                         "classes",
                         {
                             "class_id": class_id,
@@ -507,183 +634,50 @@ try:
                             "student_group": student_group,
                             "fixed_slot": fixed_slot,
                         },
-                    )
-
-                    clear_allocation_result()
-                    st.success("Class added successfully!")
-                    st.rerun()
-
-                except (ValidationError, KeyError) as e:
-                    st.error(str(e))
-
-    # -----------------------------------------------------
-    # Update and delete records
-    # -----------------------------------------------------
-    section_heading(
-        "Manage records",
-        "Update existing details or remove records you no longer need"
-    )
-
-    manage_room_tab, manage_class_tab = st.tabs(
-        ["🏫 Manage classrooms", "📚 Manage classes"]
-    )
-
-    with manage_room_tab:
-        room_ids = rooms["room_id"].tolist()
-
-        if room_ids:
-            selected_room = st.selectbox(
-                "Choose classroom",
-                room_ids,
-                key="manage_room_select"
-            )
-
-            current_room = dm.get("rooms", selected_room)
-
-            with st.form("update_room_form"):
-                st.markdown(
-    """
-    <p style="
-        color: #17365f;
-        font-size: 19px;
-        font-weight: 700;
-        margin-bottom: 15px;
-    ">
-        Editing Class
-    </p>
-    """,
-    unsafe_allow_html=True
-)
-
-                new_capacity = st.number_input(
-                    "Capacity",
-                    min_value=1,
-                    value=int(current_room["capacity"]),
-                    key=f"update_room_capacity_{selected_room}",
+                    ),
+                    "Class added",
                 )
 
-                new_facilities = st.text_input(
-                    "Facilities",
-                    value=current_room["facilities"],
-                    key=f"update_room_facilities_{selected_room}",
-                )
+    class_ids = classes["class_id"].tolist()
 
-                update_room = st.form_submit_button(
-                    "Save classroom changes",
-                    type="primary"
-                )
-
-                if update_room:
-                    try:
-                        dm.update(
-                            "rooms",
-                            selected_room,
-                            {
-                                "capacity": str(new_capacity),
-                                "facilities": new_facilities,
-                            },
-                        )
-
-                        clear_allocation_result()
-                        st.success("Classroom updated successfully!")
-                        st.rerun()
-
-                    except (ValidationError, KeyError) as e:
-                        st.error(str(e))
-
-            with st.expander("Delete this classroom"):
-                st.warning(
-                    "Deleting a classroom permanently removes it from this dataset."
-                )
-
-                confirm_room_delete = st.checkbox(
-                    f"I understand that {selected_room} will be deleted.",
-                    key="confirm_room_delete",
-                )
-
-                if st.button(
-                    "Delete classroom",
-                    key="delete_room_button",
-                    disabled=not confirm_room_delete
-                ):
-                    try:
-                        dm.delete("rooms", selected_room)
-                        clear_allocation_result()
-                        st.success("Classroom deleted successfully!")
-                        st.rerun()
-
-                    except (ValidationError, KeyError) as e:
-                        st.error(str(e))
-
+    with edit_tab:
+        if not class_ids:
+            st.info("There are no classes yet. Add one in the first tab.")
         else:
-            st.info("No classrooms available in this dataset.")
-
-    with manage_class_tab:
-        class_ids = classes["class_id"].tolist()
-
-        if class_ids:
-            selected_class = st.selectbox(
-                "Choose class",
-                class_ids,
-                key="manage_class_select"
-            )
-
-            current_class = dm.get("classes", selected_class)
+            selected = st.selectbox("Class", class_ids, key="edit_class_select")
+            current = dm.get("classes", selected)
+            current_slot = current["fixed_slot"]
+            slot_index = slot_options.index(current_slot) if current_slot in slot_options else 0
 
             with st.form("update_class_form"):
-                st.markdown(f"**Editing class: {selected_class}**")
-
-                new_name = st.text_input(
-                    "Class name",
-                    value=current_class["class_name"],
-                    key=f"update_class_name_{selected_class}"
+                c1, c2 = st.columns(2)
+                new_name = c1.text_input(
+                    "Class name", value=current["class_name"], key=f"cls_name_{selected}"
                 )
-
-                new_students = st.number_input(
-                    "Number of students",
+                new_students = c2.number_input(
+                    "Students",
                     min_value=1,
-                    value=int(current_class["students"]),
-                    key=f"update_class_students_{selected_class}",
+                    value=int(current["students"]),
+                    key=f"cls_students_{selected}",
                 )
-
-                new_instructor = st.text_input(
-                    "Instructor",
-                    value=current_class["instructor"],
-                    key=f"update_class_instructor_{selected_class}"
+                c3, c4 = st.columns(2)
+                new_instructor = c3.text_input(
+                    "Instructor", value=current["instructor"], key=f"cls_instr_{selected}"
                 )
-
-                new_group = st.text_input(
-                    "Student group",
-                    value=current_class["student_group"],
-                    key=f"update_class_group_{selected_class}"
+                new_group = c4.text_input(
+                    "Student group", value=current["student_group"], key=f"cls_group_{selected}"
                 )
-
-                class_slot_options = [""] + slots["slot_id"].tolist()
-                current_slot = current_class["fixed_slot"]
-
-                slot_index = (
-                    class_slot_options.index(current_slot)
-                    if current_slot in class_slot_options
-                    else 0
-                )
-
                 new_slot = st.selectbox(
                     "Fixed time slot",
-                    class_slot_options,
+                    slot_options,
                     index=slot_index,
-                    key=f"update_class_slot_{selected_class}",
+                    key=f"cls_slot_{selected}",
                 )
-
-                update_class = st.form_submit_button(
-                    "Save class changes",
-                    type="primary"
-                )
-
-                if update_class:
-                    try:
-                        dm.update(
+                if st.form_submit_button("Save changes", type="primary", width="stretch"):
+                    run_action(
+                        lambda: dm.update(
                             "classes",
-                            selected_class,
+                            selected,
                             {
                                 "class_name": new_name,
                                 "students": str(new_students),
@@ -691,209 +685,106 @@ try:
                                 "student_group": new_group,
                                 "fixed_slot": new_slot,
                             },
-                        )
+                        ),
+                        "Changes saved",
+                    )
 
-                        clear_allocation_result()
-                        st.success("Class updated successfully!")
-                        st.rerun()
-
-                    except (ValidationError, KeyError) as e:
-                        st.error(str(e))
-
-            with st.expander("Delete this class"):
-                st.warning(
-                    "Deleting a class permanently removes it from this dataset."
-                )
-
-                confirm_class_delete = st.checkbox(
-                    f"I understand that {selected_class} will be deleted.",
-                    key="confirm_class_delete",
-                )
-
-                if st.button(
-                    "Delete class",
-                    key="delete_class_button",
-                    disabled=not confirm_class_delete
-                ):
-                    try:
-                        dm.delete("classes", selected_class)
-                        clear_allocation_result()
-                        st.success("Class deleted successfully!")
-                        st.rerun()
-
-                    except (ValidationError, KeyError) as e:
-                        st.error(str(e))
-
+    with delete_tab:
+        if not class_ids:
+            st.info("There are no classes to delete.")
         else:
-            st.info("No classes available in this dataset.")
+            selected = st.selectbox("Class", class_ids, key="delete_class_select")
+            st.warning(f"Deleting {selected} removes it from this dataset for good.")
+            confirm = st.checkbox(f"Yes, delete {selected}", key="confirm_class_delete")
+            if st.button("Delete class", disabled=not confirm, key="delete_class_button"):
+                run_action(lambda: dm.delete("classes", selected), "Class deleted")
 
-    # -----------------------------------------------------
-    # Allocation engine
-    # -----------------------------------------------------
-    section_heading(
-        "Classroom allocation",
-        "Run the planner and review how classes are assigned"
+
+
+def allocation_page(rooms, classes, slots):
+    page_header(
+        "Allocation",
+        "Assign every class to a room and time slot. Larger classes are placed first, "
+        "fixed slots are kept, and clashes are avoided.",
     )
 
-    run_col, note_col = st.columns(
-        [1, 2],
-        vertical_alignment="center"
-    )
-
-    with run_col:
-        generate_clicked = st.button(
-            "✨ Generate allocation",
-            type="primary",
-            width="stretch",
-        )
-
-    with note_col:
-        st.caption(
-            "The planner prioritizes larger classes, respects fixed slots "
-            "and avoids scheduling conflicts."
-        )
-
-    if generate_clicked:
+    if st.button("Run allocation", type="primary"):
         try:
-            result = allocate_classes(rooms, classes, slots)
-            st.session_state["allocation_result"] = result
-
+            with st.spinner("Placing classes…"):
+                st.session_state["allocation_result"] = allocate_classes(rooms, classes, slots)
         except (ValidationError, KeyError, ValueError) as e:
-            st.error(f"Unable to generate allocation: {e}")
+            st.error(f"Could not run the allocation: {e}")
 
     result = st.session_state.get("allocation_result")
-
-    if result is not None:
-        assignments = pd.DataFrame(result["assignments"])
-        unallocated = pd.DataFrame(result["unallocated"])
-
-        total_classes = len(classes)
-        allocated_count = len(assignments)
-        unallocated_count = len(unallocated)
-
-        success_rate = (
-            allocated_count / total_classes * 100
-            if total_classes else 0
+    if result is None:
+        st.markdown(
+            '<div class="empty-state">No allocation yet. Select <b>Run allocation</b> to see the timetable.</div>',
+            unsafe_allow_html=True,
         )
+        return
 
-        unused_seats = (
-            assignments["unused_seats"].sum()
-            if not assignments.empty else 0
-        )
+    assignments, unallocated, placed, rate, avg_use = summarize_result(result, len(classes))
+    allocation_metrics(placed, len(classes), len(unallocated), rate, avg_use)
 
-        # Allocation summary
-        allocation_metric1, allocation_metric2, allocation_metric3, allocation_metric4 = st.columns(4)
+    if len(unallocated):
+        st.warning(f"{len(unallocated)} class(es) could not be placed. Open the **Not placed** tab to see why.")
+    else:
+        st.success("Every class has a room and a time slot.")
 
-        allocation_metric1.metric("Allocated", allocated_count)
-        allocation_metric2.metric("Unallocated", unallocated_count)
-        allocation_metric3.metric("Success rate", f"{success_rate:.1f}%")
-        allocation_metric4.metric("Unused seats", int(unused_seats))
-
-        st.progress(success_rate / 100 if total_classes else 0)
-
-        # Allocation results
-        section_heading(
-            "Allocation results",
-            "The classroom and time-slot assignments generated by ClassOpt"
-        )
-
-        if not assignments.empty:
-            st.dataframe(
-                assignments,
-                width="stretch",
-                hide_index=True
-            )
-        else:
-            st.info("No classes were allocated.")
-
-        # Unallocated classes
-        section_heading(
-            "Unallocated classes",
-            "Classes that could not be assigned and the reason"
-        )
-
-        if not unallocated.empty:
-            st.dataframe(
-                unallocated,
-                width="stretch",
-                hide_index=True
-            )
-        else:
-            st.success("All classes were allocated successfully!")
-
-        # Classroom utilization chart
-        section_heading(
-            "Classroom utilization",
-            "Percentage of occupied seats across allocated sessions"
-        )
-
-        if not assignments.empty:
-            room_usage = (
-                assignments.groupby("room_id")
-                .agg(
-                    students=("students", "sum"),
-                    capacity=("capacity", "sum"),
-                )
-                .reset_index()
-            )
-
-            room_usage["utilization"] = (
-                room_usage["students"]
-                / room_usage["capacity"] * 100
-            )
-
-            fig = px.bar(
-                room_usage,
-                x="room_id",
-                y="utilization",
-                text_auto=".1f",
-                color="utilization",
-                color_continuous_scale="Blues",
-                title="Room utilization percentage",
-                labels={
-                    "room_id": "Classroom",
-                    "utilization": "Utilization (%)",
-                },
-            )
-
-            fig.update_layout(
-                yaxis_range=[0, 100],
-                yaxis_ticksuffix="%",
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                font=dict(
-                    family="DM Sans, sans-serif",
-                    color="#243550"
-                ),
-                title_font=dict(
-                    size=17,
-                    color="#14233f"
-                ),
-                margin=dict(
-                    l=15,
-                    r=15,
-                    t=55,
-                    b=15
-                ),
-                coloraxis_showscale=False,
-            )
-
-            fig.update_traces(
-                texttemplate="%{text}%",
-                textposition="outside",
-                marker_line_width=0,
-            )
-
-            st.plotly_chart(
-                fig,
-                width="stretch"
-            )
-
-    # Footer
-    st.markdown(
-        "<div class='small-note'>ClassOpt • Smart Classroom Occupancy and Space Allocation Planner</div>",
-        unsafe_allow_html=True,
+    tab_tt, tab_list, tab_missing, tab_use = st.tabs(
+        ["Timetable", "Assignments", "Not placed", "Room use"]
     )
 
+    with tab_tt:
+        compact = st.toggle(
+            "Hide empty rooms and time slots",
+            value=True,
+            help="Turn off to see every room and slot, including the unused ones.",
+        )
+        grid = timetable_html(assignments, rooms, slots, compact=compact)
+        if grid:
+            st.markdown(grid, unsafe_allow_html=True)
+        else:
+            st.info("The timetable needs room and slot details in the results. See the Assignments tab.")
+
+    with tab_list:
+        if assignments.empty:
+            st.info("No classes were placed.")
+        else:
+            st.dataframe(assignments, width="stretch", hide_index=True)
+            st.download_button(
+                "Download assignments (CSV)",
+                assignments.to_csv(index=False).encode("utf-8"),
+                file_name=f"classopt_{dataset}_assignments.csv",
+                mime="text/csv",
+            )
+
+    with tab_missing:
+        if unallocated.empty:
+            st.success("Nothing to review. All classes were placed.")
+        else:
+            st.dataframe(unallocated, width="stretch", hide_index=True)
+
+    with tab_use:
+        if assignments.empty:
+            st.info("Room use appears once classes are placed.")
+        else:
+            st.plotly_chart(usage_chart(assignments), width="stretch")
+            st.caption("Share of seats filled across all sessions held in each room.")
+
+
+try:
+    dm = DataManager(dataset)
+    data = dm.get_clean_data()
+    rooms, classes, slots = data["rooms"], data["classes"], data["slots"]
+
+    page = st.session_state["page"]
+    if page == "Dashboard":
+        dashboard_page(rooms, classes, slots)
+    elif page == "Records":
+        records_page(dm, rooms, classes, slots)
+    else:
+        allocation_page(rooms, classes, slots)
+
 except (ValidationError, KeyError, ValueError) as e:
-    st.error(f"Unable to load project data: {e}")
+    st.error(f"Could not load the data: {e}")
